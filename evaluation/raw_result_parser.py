@@ -3,7 +3,7 @@ import sys
 
 from evaluation.tagging_util import get_label
 from evaluation.ioutil import open_file
-from evaluation.datapoint import DataPoint, Evidence
+from evaluation.datapoint import DataPoint, Evidence, EecommFeatures
 from evaluation import tagging_util
 __all__ = ['iter_results']
 
@@ -27,7 +27,9 @@ def parse_line_label(line):
     evis = data[DataPoint.EVIDENCES]
     evi_tokens_list = [evi[Evidence.E_TOKENS] for evi in evis]
     golden_answers_label_list = [char_labels2int(evi[Evidence.GOLDEN_LABELS]) for evi in evis]
-    return q_tokens, evi_tokens_list, golden_answers_label_list
+    g1s = [evi[Evidence.QECOMM_FEATURES] for evi in evis]
+    g2s = [evi[Evidence.EECOMM_FEATURES_LIST][0][EecommFeatures.EECOMM_FEATURES] for evi in evis]
+    return q_tokens, evi_tokens_list, golden_answers_label_list, g1s, g2s
 
 def iter_results(raw_prediction_file, test_file, schema):
     predictions = []
@@ -53,7 +55,7 @@ def iter_results(raw_prediction_file, test_file, schema):
 def load_train_data(data_file):
     with open_file(data_file) as data_file:
         for line in data_file:
-            q_tokens, evi_tokens_list, golden_labels = parse_line_label(line)
-            for e_tokens, golden_label in zip(evi_tokens_list, golden_labels):
-                yield q_tokens, e_tokens, golden_label
+            q_tokens, evi_tokens_list, golden_labels, g1s, g2s = parse_line_label(line)
+            for e_tokens, golden_label, g1, g2 in zip(evi_tokens_list, golden_labels, g1s, g2s):
+                yield q_tokens, e_tokens, golden_label, g1, g2
 

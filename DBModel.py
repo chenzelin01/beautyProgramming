@@ -72,9 +72,9 @@ class DBModel:
         es = []
         for q_list, e_list in zip(sentence_qs, sentence_es):
             if type(q_list) is not list:
-                q_list = jieba.cut(q_list)
+                q_list = list(jieba.cut(q_list))
             if type(e_list) is not list:
-                e_list = jieba.cut(e_list)
+                e_list = list(jieba.cut(e_list))
             input_q, input_e = self.qa_model.get_input_q_and_e(q_list, e_list)
             qs.append(input_q)
             es.append(input_e)
