@@ -3,6 +3,8 @@ from keras.layers import Input, LSTM, Dense, concatenate, crf, RepeatVector, Tim
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras import backend as K
+from keras.backend.tensorflow_backend import set_session
+import tensorflow as tf
 from gensim.models import Word2Vec
 import numpy as np
 from evaluation import raw_result_parser
@@ -117,6 +119,9 @@ class QAModel:
         return self.model.predict([input_qs, input_es])
 
 if __name__ == '__main__':
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.3
+    set_session(tf.Session(config=config))
     qa = QAModel()
     qa.get_model()
     # for test_q, test_e, test_labels in qa.load_data('WebQA.v1.0/data/test.ir.json.gz'):
@@ -142,6 +147,8 @@ if __name__ == '__main__':
     train_labels = np.array(train_labels, dtype=np.int32)
 
     qa.fit(train_qs, train_es, train_qes, train_ees, train_labels)
+    qa.save_model('qamodel_save_test.h5')
+    # qa.load_model('qamodel_save_test.h5')
     # qamodel.save_weights('qamodel.h5')
     # qa.load_model('qamodel.h5')
     # print(qa.model.evaluate([train_qs, train_es], [train_labels]))
