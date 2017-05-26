@@ -20,7 +20,7 @@ class DBBASEParser:
     def iter_result(self):
         with open(self.db_file, encoding='utf-8') as db_f:
             line = db_f.readline()
-            while line != -1:
+            while line != -1 and len(line) > 0:
                 question, evidence, label = self.parse_line(line)
                 yield question, evidence, label
                 line = db_f.readline()
