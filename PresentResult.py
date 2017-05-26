@@ -32,16 +32,16 @@ class PresentResult:
         qs = []
         es = []
         ls = []
-        # max_iter = 1000
-        # cur = 0
+        max_iter = 100
+        cur = 0
         for q, e, l in iter:
             qs.append(q)
             es.append(e)
             ls.append(l)
-            # if cur > max_iter:
-            #     break
-            # else:
-            #     cur += 1
+            if cur > max_iter:
+                break
+            else:
+                cur += 1
         pred_ls = self.get_labels(qs, es)
         return qs, es, ls, pred_ls
 
@@ -49,30 +49,38 @@ class PresentResult:
         qs, es, labels, pred_labels = self.parse_db()
         correct = 0
         wrong = 0
+        match = 0
         max_q_e = len(labels)
         with open(self.result_file, mode='w', encoding='utf-8') as rf:
             for q, e, l, pred in zip(qs, es, labels, pred_labels):
                 pred = pred.tolist()
                 b_index = find_index(pred, [1, 0, 0, 0])
                 i_index = find_index(pred, [0, 1, 0, 0])
+                pred = 0
                 if b_index != -1 or i_index != -1:
-                    pred = 1
-                else:
-                    pred = 0
+                    for a in e:
+                        tp = find_index(q, a)
+                        if tp != -1:
+                            pred = 1
+                            break
                 if pred == l:
+                    if pred == 1:
+                        match += 1
                     correct += 1
                 else:
                     wrong += 1
                 line_words = [str(pred), str(l), "".join(q), "".join(e)]
                 rf.writelines(" ".join(line_words))
-        return correct / max_q_e, wrong / max_q_e
+        labels = np.array(labels)
+        return match / np.sum(labels), correct / max_q_e, wrong / max_q_e
 
 if __name__=='__main__':
-    p_result = PresentResult(db_file='BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt',
+    p_result = PresentResult(db_file='BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.train.txt',
                              result_file='BoP2017_DBAQ_dev_train_data/res.txt',
-                             model_file='qamodel.h5')
+                             model_file='qamodel_0.2.h5')
 
-    correct, wrong = p_result.write_result()
+    match, correct, wrong = p_result.write_result()
+    print(match)
     print(correct)
     print(wrong)
 
