@@ -70,7 +70,7 @@ class QAModel3:
                       kernel_regularizer=l2(re_lambda))(lstm_1)
 
         lstm_2_reverse = Lambda(lambda x: K.reverse(x, 0), name='lstm_reverse')(lstm_2)
-        lstm_3 = LSTM(4,
+        lstm_3 = LSTM(D,
                       dropout=dropout_rate,
                       return_sequences=True,
                       activation='sigmoid',
