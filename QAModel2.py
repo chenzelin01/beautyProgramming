@@ -32,7 +32,7 @@ class QAModel2:
         # question_x = Embedding(output_dim=question_len,
         #               input_dim=word_dim,
         #               input_length=question_len)(question_input)
-        q = LSTM(self.question_len, dropout=dropout_rate, return_sequences=True, activation='sigmoid')(question_input)
+        q = LSTM(self.question_len, dropout=dropout_rate, return_sequences=True)(question_input)
 
         alpha_tanh = Dense(self.question_len, activation='tanh')(q)
         alpha = Dense(1, activation='softmax')(alpha_tanh)
@@ -46,8 +46,10 @@ class QAModel2:
         # evidence_x = Embedding(output_dim=evidence_len,
         #                        input_dim=word_dim + 1,
         #                        input_length=evidence_len)(evidence)
-        lstm_1 = LSTM(64, dropout=dropout_rate, return_sequences=True, activation='sigmoid')(evidence_x)
-        lstm_2 = LSTM(64, dropout=dropout_rate, return_sequences=True, activation='sigmoid')(lstm_1)
+        # lstm_1 = LSTM(64, dropout=dropout_rate, return_sequences=True, activation='sigmoid')(evidence_x)
+        lstm_1 = LSTM(64, dropout=dropout_rate, return_sequences=True)(evidence_x)
+        # lstm_2 = LSTM(64, dropout=dropout_rate, return_sequences=True, activation='sigmoid')(lstm_1)
+        lstm_2 = LSTM(64, dropout=dropout_rate, return_sequences=True)(lstm_1)
         lstm_2_reverse = Lambda(lambda x: K.reverse(x, 0), name='lstm_reverse')(lstm_2)
         lstm_3 = LSTM(self.evidence_len, dropout=dropout_rate, return_sequences=True, activation='sigmoid')(concatenate([lstm_1, lstm_2_reverse]))
         # CRF layer
