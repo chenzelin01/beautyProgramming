@@ -48,8 +48,8 @@ class QACOSModel:
 
         a_input = Input(shape=(self.evidence_len, self.word_dim), name='answer')
         ha_layer = Dense(100, activation='tanh')(a_input)
-        a_cnn = Conv1D(200, kernel_size=3, activation='relu', name='hq_cnn')(ha_layer)
-        a_pool = Dropout(dropout_rate)(MaxPooling1D(name='pooling_layer')(a_cnn))
+        a_cnn = Conv1D(200, kernel_size=3, activation='relu', name='a_cnn')(ha_layer)
+        a_pool = Dropout(dropout_rate)(MaxPooling1D(name='a_pooling_layer')(a_cnn))
         a_pool_flatten = Flatten()(a_pool)
         # a_represent_hidden = Dropout(dropout_rate)(Dense(hidden_unit, activation='tanh')(a_pool_flatten))
         a_represent = Dropout(dropout_rate)(Dense(self.r_dim, activation='tanh')(a_pool_flatten))
@@ -150,4 +150,4 @@ if __name__=='__main__':
     train_es = np.array(train_es, dtype=np.float32)
     train_labels = np.array(train_labels, dtype=np.int32)
     qacos.fit(train_qs, train_es, train_labels)
-    # qacos.save_model('qacosmodel.h5')
+    qacos.save_model('qacosmodel.h5')
