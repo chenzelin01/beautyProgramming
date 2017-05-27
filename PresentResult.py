@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 import jieba
-from QAModel2 import QAModel2
+from QAModel import QAModel
 from DBBASEParser import DBBASEParser
 import numpy as np
 
@@ -14,7 +14,7 @@ def find_index(list, word):
 class PresentResult:
     def __init__(self, db_file, result_file, model_file):
         self.result_file = result_file
-        self.qamodel = QAModel2()
+        self.qamodel = QAModel()
         self.qamodel.load_model(model_file)
         self.db_parser = DBBASEParser(db_file)
     ''':param qs is the list of questions and es is the list of answers'''
@@ -32,16 +32,16 @@ class PresentResult:
         qs = []
         es = []
         ls = []
-        max_iter = 100
-        cur = 0
+        # max_iter = 3000
+        # cur = 0
         for q, e, l in iter:
             qs.append(q)
             es.append(e)
             ls.append(l)
-            if cur > max_iter:
-                break
-            else:
-                cur += 1
+            # if cur > max_iter:
+            #     break
+            # else:
+            #     cur += 1
         pred_ls = self.get_labels(qs, es)
         return qs, es, ls, pred_ls
 
@@ -63,6 +63,7 @@ class PresentResult:
                         if tp != -1:
                             pred = 1
                             break
+                    # pred = 1
                 if pred == l:
                     if pred == 1:
                         match += 1
@@ -75,9 +76,9 @@ class PresentResult:
         return match / np.sum(labels), correct / max_q_e, wrong / max_q_e
 
 if __name__=='__main__':
-    p_result = PresentResult(db_file='BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.train.txt',
+    p_result = PresentResult(db_file='BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt',
                              result_file='BoP2017_DBAQ_dev_train_data/res.txt',
-                             model_file='qamodel_0.2.h5')
+                             model_file='qamodel.h5')
 
     match, correct, wrong = p_result.write_result()
     print(match)

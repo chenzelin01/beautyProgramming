@@ -133,7 +133,7 @@ class QAModel2:
 
 if __name__ == '__main__':
     qa = QAModel2()
-    qa.get_model()
+    # qa.get_model()
     # for test_q, test_e, test_labels in qa.load_data('WebQA.v1.0/data/test.ir.json.gz'):
     #     print(test_q, test_e, test_labels)
     # test_q, test_e, test_labels = qa.load_data('WebQA.v1.0/data/test.ann.json.gz')
@@ -150,9 +150,13 @@ if __name__ == '__main__':
     train_es = np.array(train_es, dtype=np.float32)
     train_labels = np.array(train_labels, dtype=np.int32)
 
-    qa.fit(train_qs, train_es, train_labels)
-    qa.save_model('qamodel_0.2.h5')
     qa.load_model('qamodel_0.2.h5')
+    ls = qa.predict(train_qs, train_es)
+    print(ls)
+    #
+    # qa.fit(train_qs, train_es, train_labels)
+    # qa.save_model('qamodel_0.2.h5')
+
     # qamodel.save_weights('qamodel.h5')
     # qa.load_model('qamodel.h5')
     # print(qa.model.evaluate([train_qs, train_es], [train_labels]))

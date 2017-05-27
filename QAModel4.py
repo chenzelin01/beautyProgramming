@@ -2,6 +2,7 @@
 from keras.layers import Input, LSTM, Dense, concatenate, crf, RepeatVector, TimeDistributed, Multiply, Embedding
 from keras.layers.core import Lambda
 from keras.models import Model
+from keras.regularizers import l2
 from keras import backend as K
 from keras.backend.tensorflow_backend import set_session
 import tensorflow as tf
@@ -10,12 +11,12 @@ import numpy as np
 from evaluation import raw_result_parser
 from evaluation import tagging_util
 
-class QAModel:
+class QAModel4:
     def __init__(self):
         self.wordModel = Word2Vec.load('model_new_and_wiki')
         self.word_dim = 100
         self.question_len = 30
-        self.evidence_len = 100
+        self.evidence_len = 80
         self.model = None
 
     def word_vec(self, word):
@@ -26,31 +27,49 @@ class QAModel:
 
     def get_model(self):
         dropout_rate = 0.05
+        re_lambda = 0.016
+        D = 100
         # question layer
         question_input = Input(shape=(self.question_len, self.word_dim), name='q_input')
         # question_x = Embedding(output_dim=question_len,
         #               input_dim=word_dim,
         #               input_length=question_len)(question_input)
-        q = LSTM(self.question_len, dropout=dropout_rate, return_sequences=True)(question_input)
+        q = LSTM(D,
+                 dropout=dropout_rate,
+                 return_sequences=True,
+                 activation='sigmoid',
+                 name='q')(question_input)
 
-        alpha_tanh = Dense(self.question_len, activation='tanh')(q)
-        alpha = Dense(1, activation='softmax')(alpha_tanh)
+        alpha_tanh = TimeDistributed(Dense(D, activation='tanh'))(q)
+        alpha = TimeDistributed(
+            Dense(1, activation='softmax', name='alpha')
+        )(alpha_tanh)
         alpha_multiply = Multiply()([q, alpha])
         question_represent = Lambda(lambda x: K.sum(x, axis=1), name='question_representation')(alpha_multiply)
+
         # evidence layer
         evidence_input = Input(shape=(self.evidence_len, self.word_dim), name='e_input', dtype=np.float32)
         # what the fuck is g1 and g2 in the paper formula  10, don't care, ignore first
         question_represent_repeat = RepeatVector(self.evidence_len)(question_represent)
         evidence_x = concatenate([evidence_input, question_represent_repeat], name='input_e')
-        # evidence_x = Embedding(output_dim=evidence_len,
-        #                        input_dim=word_dim + 1,
-        #                        input_length=evidence_len)(evidence)
-        lstm_1 = LSTM(64, dropout=dropout_rate, return_sequences=True)(evidence_x)
-        lstm_2 = LSTM(64, dropout=dropout_rate, return_sequences=True)(lstm_1)
+
+        lstm_1 = LSTM(D,
+                      dropout=dropout_rate,
+                      activation='sigmoid',
+                      return_sequences=True)(evidence_x)
+
+        lstm_2 = LSTM(D,
+                      dropout=dropout_rate,
+                      activation='sigmoid',
+                      return_sequences=True)(lstm_1)
+
         lstm_2_reverse = Lambda(lambda x: K.reverse(x, 0), name='lstm_reverse')(lstm_2)
-        lstm_3 = LSTM(self.evidence_len, dropout=dropout_rate, return_sequences=True)(concatenate([lstm_1, lstm_2_reverse]))
+        lstm_3 = LSTM(D,
+                      dropout=dropout_rate,
+                      activation='sigmoid',
+                      return_sequences=True)(concatenate([lstm_1, lstm_2_reverse]))
         # CRF layer
-        tp_layer = TimeDistributed(Dense(4))(lstm_3)
+        tp_layer = TimeDistributed(Dense(4, activation='tanh'))(lstm_3)
         crf_layer = crf.ChainCRF(name='crf_layer')
         crf_o = crf_layer(tp_layer)
 
@@ -86,10 +105,11 @@ class QAModel:
         for word_index in range(min(self.evidence_len, len(evidence))):
             word = evidence[word_index]
             input_e[word_index] = self.word_vec(word)
+
         return input_q, input_e
 
     def fit(self, input_qs, input_es, train_labels):
-        self.model.fit([input_qs, input_es], [train_labels], epochs=10, batch_size=120)
+        self.model.fit([input_qs, input_es], [train_labels], epochs=30, batch_size=60)
 
     def save_model(self, model_file):
         self.model.save_weights(model_file)
@@ -108,8 +128,8 @@ class QAModel:
         return self.model.predict([input_qs, input_es])
 
 if __name__ == '__main__':
-    qa = QAModel()
-    qa.get_model()
+    qa = QAModel4()
+    qa.load_model('qamodel_0.4.h5')
     # for test_q, test_e, test_labels in qa.load_data('WebQA.v1.0/data/test.ir.json.gz'):
     #     print(test_q, test_e, test_labels)
     # test_q, test_e, test_labels = qa.load_data('WebQA.v1.0/data/test.ann.json.gz')
@@ -126,9 +146,13 @@ if __name__ == '__main__':
     train_es = np.array(train_es, dtype=np.float32)
     train_labels = np.array(train_labels, dtype=np.int32)
 
+    # qa.load_model('qamodel_0.2.h5')
+    # ls = qa.predict(train_qs, train_es)
+    # print(ls)
+    #
     qa.fit(train_qs, train_es, train_labels)
-    # qa.save_model('qamodel_save_test.h5')
-    # qa.load_model('qamodel.h5')
+    qa.save_model('qamodel_0.4.2.h5')
+
     # qamodel.save_weights('qamodel.h5')
     # qa.load_model('qamodel.h5')
     # print(qa.model.evaluate([train_qs, train_es], [train_labels]))
