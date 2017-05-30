@@ -41,7 +41,8 @@ class QAModel3:
                  kernel_regularizer=l2(re_lambda),
                  name='q'))(question_input)
 
-        alpha_tanh = TimeDistributed(Dense(D, activation='tanh', kernel_regularizer=l2(re_lambda)))(q)
+        # alpha_tanh = TimeDistributed(Dense(D, activation='tanh', kernel_regularizer=l2(re_lambda)))(q)
+        alpha_tanh = Dense(D, activation='tanh', kernel_regularizer=l2(re_lambda))(q)
         alpha = TimeDistributed(
             Dense(1, activation='softmax', kernel_regularizer=l2(re_lambda), name='alpha')
         )(alpha_tanh)
@@ -129,12 +130,14 @@ class QAModel3:
         return self.model
 
     ''':param input_qes and input_ees should be type() as np.array'''
-    def predict(self, input_qs, input_es):
+    def predict(self, input_qs, input_es, input_qes):
         if type(input_qs) is list:
             input_qs = np.array(input_qs)
         if type(input_es) is list:
             input_es = np.array(input_es)
-        return self.model.predict([input_qs, input_es])
+        if type(input_qes) is list:
+            input_qes = np.array(input_qes)
+        return self.model.predict([input_qs, input_es, input_qes])
 
 if __name__ == '__main__':
     qa = QAModel3()

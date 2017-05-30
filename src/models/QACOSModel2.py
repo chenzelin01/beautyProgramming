@@ -19,7 +19,7 @@ def find_index(list, word):
     except:
         return -1
 
-class QACOSModel:
+class QACOSModel2:
     def __init__(self):
         self.wordModel = Word2Vec.load('model_new_and_wiki')
         self.m = 0.009
@@ -27,7 +27,7 @@ class QACOSModel:
         self.word_dim = 100
         self.question_len = 30
         self.evidence_len = 80
-        self.r_dim = 64
+        self.r_dim = 100
 
     def word_vec(self, word):
         try:
@@ -36,23 +36,23 @@ class QACOSModel:
             return np.zeros((self.word_dim,))
 
     def get_model(self):
-        dropout_rate = 0.1
+        dropout_rate = 0.05
         q_input = Input(shape=(self.question_len, self.word_dim), name='question')
         hq_layer = Dense(100, activation='tanh')(q_input)
-        q_cnn = Conv1D(200, kernel_size=3, activation='relu', name='q_cnn')(hq_layer)
+        q_cnn = Conv1D(1000, kernel_size=3, activation='relu', name='q_cnn')(hq_layer)
         q_pool = Dropout(dropout_rate)(MaxPooling1D(name='q_pooling_layer')(q_cnn))
         q_pool_flatten = Flatten()(q_pool)
-        # hidden_unit = 100
-        # q_represent_hidden = Dropout(dropout_rate)(Dense(hidden_unit, activation='tanh')(q_pool))
-        q_represent = Dropout(dropout_rate)(Dense(self.r_dim, activation='tanh', name='question_representation')(q_pool_flatten))
+        hidden_unit = 100
+        q_represent_hidden = Dropout(dropout_rate)(Dense(hidden_unit, activation='tanh')(q_pool_flatten))
+        q_represent = Dropout(dropout_rate)(Dense(self.r_dim, activation='tanh', name='question_representation')(q_represent_hidden))
 
         a_input = Input(shape=(self.evidence_len, self.word_dim), name='answer')
         ha_layer = Dense(100, activation='tanh')(a_input)
-        a_cnn = Conv1D(200, kernel_size=3, activation='relu', name='a_cnn')(ha_layer)
+        a_cnn = Conv1D(1000, kernel_size=3, activation='relu', name='a_cnn')(ha_layer)
         a_pool = Dropout(dropout_rate)(MaxPooling1D(name='a_pooling_layer')(a_cnn))
         a_pool_flatten = Flatten()(a_pool)
-        # a_represent_hidden = Dropout(dropout_rate)(Dense(hidden_unit, activation='tanh')(a_pool_flatten))
-        a_represent = Dropout(dropout_rate)(Dense(self.r_dim, activation='tanh')(a_pool_flatten))
+        a_represent_hidden = Dropout(dropout_rate)(Dense(hidden_unit, activation='tanh')(a_pool_flatten))
+        a_represent = Dropout(dropout_rate)(Dense(self.r_dim, activation='tanh')(a_represent_hidden))
 
         '''compute the cosine of r_q and r_a as the concatenate input of r_q and r_a'''
 
@@ -87,8 +87,8 @@ class QACOSModel:
 
     def load_train_data(self, data_dir):
         data = raw_result_parser.load_train_data(data_dir)
-        # load_max = 100
-        # load_cur = 0
+        load_max = 100
+        load_cur = 0
         for q_token, e_token, golden_label, g1, g2 in data:
             output_l = 0
             input_q, input_e = self.get_input_q_e(q_token, e_token)
@@ -97,9 +97,9 @@ class QACOSModel:
             if begin != -1 or inside != -1:
                 output_l = 1
             yield input_q, input_e, output_l
-            # load_cur += 1
-            # if load_cur > load_max:
-            #     break
+            load_cur += 1
+            if load_cur > load_max:
+                break
 
     ''' @:param the list of split question and evidence
         @:return a maxtric which col is the word_vec of the split word'''
@@ -135,7 +135,7 @@ class QACOSModel:
 
 
 if __name__=='__main__':
-    qacos = QACOSModel()
+    qacos = QACOSModel2()
     qacos.get_model()
     iters = qacos.load_train_data('WebQA.v1.0/data/training.json.gz')
     train_qs = []
@@ -150,4 +150,4 @@ if __name__=='__main__':
     train_es = np.array(train_es, dtype=np.float32)
     train_labels = np.array(train_labels, dtype=np.int32)
     qacos.fit(train_qs, train_es, train_labels)
-    qacos.save_model('qacosmodel.h5')
+    qacos.save_model('qacosmodel_0.2.h5')
