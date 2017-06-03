@@ -2,7 +2,7 @@
 """this module is implementation of matching question and answer using CNN to
    compute the cosine distance between question and answer"""
 
-from keras.layers import Input, Conv1D, Dense, MaxPooling1D, concatenate, crf, RepeatVector, Dropout, Dot, Embedding, Flatten
+from keras.layers import Input, LSTM, Dense, MaxPooling1D, concatenate, crf, RepeatVector, Dropout, Dot, Embedding, Flatten
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras import backend as K
@@ -12,33 +12,21 @@ from gensim.models import Word2Vec
 import numpy as np
 from evaluation import raw_result_parser
 from evaluation import tagging_util
-
-def find_index(list, word):
-    try:
-        return list.index(word)
-    except:
-        return -1
+from ..Sentence2Matrix import Sentence2Matrix
 
 class QACOSModel:
     def __init__(self):
-        self.wordModel = Word2Vec.load('model_new_and_wiki')
-        self.m = 0.009
+        self.senetence_model = Sentence2Matrix('../../model_new_and_wiki')
+        self.margin = 0.001
         self.model = None
-        self.word_dim = 100
-        self.question_len = 30
-        self.evidence_len = 80
+        self.word_dim = self.senetence_model.word_dim
+        self.sentence_len = self.senetence_model.sentence_len
         self.r_dim = 64
 
-    def word_vec(self, word):
-        try:
-            return self.wordModel[word]
-        except KeyError:
-            return np.zeros((self.word_dim,))
-
-    def get_model(self):
-        dropout_rate = 0.1
-        q_input = Input(shape=(self.question_len, self.word_dim), name='question')
-        hq_layer = Dense(100, activation='tanh')(q_input)
+    def compile_model(self):
+        dropout_rate = 0.05
+        q_input = Input(shape=(self.sentence_len, self.word_dim), name='question')
+        q_lstm =
         q_cnn = Conv1D(200, kernel_size=3, activation='relu', name='q_cnn')(hq_layer)
         q_pool = Dropout(dropout_rate)(MaxPooling1D(name='q_pooling_layer')(q_cnn))
         q_pool_flatten = Flatten()(q_pool)

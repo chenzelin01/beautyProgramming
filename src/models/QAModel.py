@@ -3,16 +3,15 @@ from keras.layers import Input, LSTM, Dense, concatenate, crf, RepeatVector, Tim
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras import backend as K
-from keras.backend.tensorflow_backend import set_session
-import tensorflow as tf
 from gensim.models import Word2Vec
 import numpy as np
 from evaluation import raw_result_parser
-from evaluation import tagging_util
 
+
+'''this model is the first native model implements https://arxiv.org/pdf/1607.06275.pdf'''
 class QAModel:
     def __init__(self):
-        self.wordModel = Word2Vec.load('model_new_and_wiki')
+        self.wordModel = Word2Vec.load('../model_new_and_wiki')
         self.word_dim = 100
         self.question_len = 30
         self.evidence_len = 100
@@ -28,9 +27,6 @@ class QAModel:
         dropout_rate = 0.05
         # question layer
         question_input = Input(shape=(self.question_len, self.word_dim), name='q_input')
-        # question_x = Embedding(output_dim=question_len,
-        #               input_dim=word_dim,
-        #               input_length=question_len)(question_input)
         q = LSTM(self.question_len, dropout=dropout_rate, return_sequences=True)(question_input)
 
         alpha_tanh = Dense(self.question_len, activation='tanh')(q)
@@ -113,7 +109,7 @@ if __name__ == '__main__':
     # for test_q, test_e, test_labels in qa.load_data('WebQA.v1.0/data/test.ir.json.gz'):
     #     print(test_q, test_e, test_labels)
     # test_q, test_e, test_labels = qa.load_data('WebQA.v1.0/data/test.ann.json.gz')
-    iters = qa.load_train_data('WebQA.v1.0/data/training.json.gz')
+    iters = qa.load_train_data('../../WebQA.v1.0/data/training.json.gz')
     train_qs = []
     train_es = []
     train_labels = []
@@ -127,7 +123,7 @@ if __name__ == '__main__':
     train_labels = np.array(train_labels, dtype=np.int32)
 
     qa.fit(train_qs, train_es, train_labels)
-    # qa.save_model('qamodel_save_test.h5')
+    qa.save_model('qamodel_save_test.h5')
     # qa.load_model('qamodel.h5')
     # qamodel.save_weights('qamodel.h5')
     # qa.load_model('qamodel.h5')

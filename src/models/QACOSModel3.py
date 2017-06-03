@@ -6,28 +6,14 @@ from keras.layers import Input, Conv1D, Dense, MaxPooling1D, Bidirectional, LSTM
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras import backend as K
-from keras.backend.tensorflow_backend import set_session
-import tensorflow as tf
 from gensim.models import Word2Vec
 import numpy as np
 from evaluation import raw_result_parser
-from evaluation import tagging_util
-
-def find_index(list, word):
-    try:
-        return list.index(word)
-    except:
-        return -1
+from src.Sentence2Matrix import Sentence2Matrix
 
 class QACOSModel3:
     def __init__(self):
-        self.wordModel = Word2Vec.load('model_new_and_wiki')
-        self.m = 0.009
-        self.model = None
-        self.word_dim = 100
-        self.question_len = 30
-        self.evidence_len = 80
-        self.r_dim = 100
+        self.sentence_model = Sentence2Matrix("../../model_new_and_wiki")
 
     def word_vec(self, word):
         try:

@@ -1,10 +1,17 @@
 # -*- coding:utf-8 -*-
 import jieba
-from QAModel4 import QAModel4
-from QACOSModel import QACOSModel
-from DBBASEParser import DBBASEParser
+import sys
+sys.path.append('..')
+from src.models.QAModel import QAModel
+from src.DBBASEParser import DBBASEParser
 import numpy as np
-
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+config = tf.ConfigProto(
+    gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.5),
+    device_count={'GPU': 1}
+)
+set_session(tf.Session(config=config))
 
 def find_index(list, word):
     try:
@@ -15,7 +22,7 @@ def find_index(list, word):
 class PresentResult:
     def __init__(self, db_file, result_file, model_file):
         self.result_file = result_file
-        self.qamodel = QAModel4()
+        self.qamodel = QAModel()
         self.qamodel.load_model(model_file)
         self.db_parser = DBBASEParser(db_file)
     ''':param qs is the list of questions and es is the list of answers'''
@@ -33,16 +40,16 @@ class PresentResult:
         qs = []
         es = []
         ls = []
-        max_iter = 3000
-        cur = 0
+        # max_iter = 5000
+        # cur = 0
         for q, e, l in iter:
             qs.append(q)
             es.append(e)
             ls.append(l)
-            if cur > max_iter:
-                break
-            else:
-                cur += 1
+            # if cur > max_iter:
+            #     break
+            # else:
+            #     cur += 1
         pred_ls = self.get_labels(qs, es)
         return qs, es, ls, pred_ls
 
@@ -72,15 +79,14 @@ class PresentResult:
                 else:
                     wrong += 1
                 line_words = [str(pred), str(l), "".join(q), "".join(e)]
-                rf.writelines(" ".join(line_words))
+                rf.writelines("\t".join(line_words))
         labels = np.array(labels)
         return match / np.sum(labels), correct / max_q_e, wrong / max_q_e
 
 if __name__=='__main__':
-    p_result = PresentResult(db_file='BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt',
-                             result_file='BoP2017_DBAQ_dev_train_data/res.txt',
-                             model_file='qamodel_0.4.2.h5')
-
+    p_result = PresentResult(db_file='../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt',
+                             result_file='../BoP2017_DBAQ_dev_train_data/res_file2.txt',
+                             model_file='models/qamodel2_epoch11')
     match, correct, wrong = p_result.write_result()
     print(match)
     print(correct)

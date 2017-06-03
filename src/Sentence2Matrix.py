@@ -23,9 +23,9 @@ class Sentence2Matrix:
     def get_sentence_matrix(self, sentence):
         if type(sentence) is not list:
             sentence_split = list(jieba.cut(sentence))
-            sentence_len = len(sentence_split)
         else:
             sentence_split = sentence
+        sentence_len = len(sentence_split)
         sentence_matrix = np.zeros((self.sentence_len, self.word_dim))
         cur_index = 0
         # erase the signature of the sentence

@@ -114,9 +114,9 @@ class SentenceSimilarity:
                     if cur_iter > max_iter:
                         break
 
-        with open("BoP2017_DBAQ_dev_train_data/ScoreResult.txt", mode='w', encoding='utf-8') as f:
+        with open("BoP2017_DBAQ_dev_train_data/Score.txt", mode='w', encoding='utf-8') as f:
             for pred, l, q, a in zip(preds, ls, qs, ans):
-                f.writelines("\t".join([str(pred), str(l), q, a]))
+                f.writelines(str(pred))
 
 
 
@@ -128,6 +128,6 @@ if __name__=='__main__':
     # A4 = "盾上方写着“中西区圣安多尼学校”的中英文字样，下方中央有一特式百合花，两旁有代表校名的英文简写\"CWSA\"，以及中文校训：“笃信博爱”。"
     # sim_hp = SentenceSimilarity()
     # print(sim_hp.all_answer_score(Q1, [A1, A2, A3, A4]))
-    # sim_hp = SentenceSimilarity()
-    # sim_hp.evalution()
+    sim_hp = SentenceSimilarity()
+    sim_hp.evalution()
 
