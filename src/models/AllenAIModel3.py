@@ -9,6 +9,9 @@ from keras.models import Model
 from keras import backend as K
 import numpy as np
 import sys
+
+from keras.optimizers import SGD
+
 sys.path.append('../..')
 from src.Sentence2Matrix import Sentence2Matrix
 
@@ -29,7 +32,7 @@ class AllenAIModel:
         self.sentence_len = self.sentence_matrix_helper.sentence_len
         self.word_dim = self.sentence_matrix_helper.word_dim
         self.model = None
-        self.margin = 0.2
+        self.margin = 0.1
         # self.db_file = "../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.pre_train.txt"
         self.db_file = "../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.pre_train.txt"
         self.batch_m = 120
@@ -45,7 +48,7 @@ class AllenAIModel:
         # softmax_weight = Multiply()([LSTM_layer, alpha])
 
         conv_layer = Dropout(dropout_rate)(
-            Convolution1D(filters=self.output_dim, kernel_size=3, name='conv_layer', activation='tanh')(LSTM_layer)
+            Convolution1D(filters=self.output_dim, kernel_size=2, name='conv_layer', activation='tanh')(LSTM_layer)
         )
         pooling_layer = MaxPooling1D(pool_size=self.sentence_len - 2)(conv_layer)
         pooling_layer = Lambda(lambda x: K.reshape(x, (-1, self.output_dim,)))(pooling_layer)
@@ -144,21 +147,22 @@ class AllenAIModel:
             return sim_score
 
         def compare_score_and_label(score_list, label_list):
-            rank_list = np.ones((len(score_list),), dtype=np.int32)
+            rank_list = np.ones((len(score_list),), dtype=np.float32)
             label_list = np.array(label_list)
             score_list = np.array(score_list)
-            correct_margin = 1
-            max_rank = np.sum(label_list) + correct_margin
             sort_list = np.argsort(score_list)[::-1]
             r = 1
             for arg_index in sort_list:
                 rank_list[arg_index] = r
                 r += 1
             rank_list_cp = np.array(rank_list)
-            rank_list_cp[label_list == 0] = max_rank + 1
-
-            correct_num = np.sum(rank_list_cp <= max_rank)
-            return correct_num, rank_list
+            rank_list_cp[label_list == 0] = 0
+            s = np.sum(rank_list_cp)
+            if s == 0:
+                score = 0
+            else:
+                score = 1 / s
+            return score, rank_list
 
         cur_iter = 0
         predict_sentence_buffer = []
@@ -169,7 +173,8 @@ class AllenAIModel:
         preds = []
         scores = []
         last_q = None
-        correct = 0
+        q_num = 0
+        total_scores = 0
         with open("../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt", mode='r', encoding='utf-8') as f:
             line = f.readline()
             while line != -1 and len(line) > 0:
@@ -179,15 +184,17 @@ class AllenAIModel:
                 ans.append(a)
                 if last_q is None:
                     last_q = q
+                    q_num += 1
                     predict_sentence_buffer.append(q)
                 elif last_q != q:
                     last_q = q
+                    q_num += 1
                     vec_list = self.predict(predict_sentence_buffer)
                     pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
                     for s in pred_score:
                         scores.append(s)
-                    q_correct, rank = compare_score_and_label(pred_score, q_label_ls)
-                    correct += q_correct
+                    score, rank = compare_score_and_label(pred_score, q_label_ls)
+                    total_scores += score
                     for r in rank:
                         preds.append(r)
                     predict_sentence_buffer = []
@@ -205,13 +212,13 @@ class AllenAIModel:
             pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
             for s in pred_score:
                 scores.append(s)
-            q_correct, rank = compare_score_and_label(pred_score, q_label_ls)
-            correct += q_correct
+            score, rank = compare_score_and_label(pred_score, q_label_ls)
+            total_scores += score
             for r in rank:
                 preds.append(r)
 
-        total_1s = np.sum(ls)
-        print(correct / total_1s)
+        ret = total_scores / q_num
+        print(ret)
         if write_into_file:
             print('writing to file')
             detail_lines = []
@@ -220,27 +227,119 @@ class AllenAIModel:
                 line = "\t".join([str(pred), str(l), q, a])
                 detail_lines.append(line)
                 scores_lines.append(str(score))
-            with open("../../BoP2017_DBAQ_dev_train_data/allenAI3ScoreResult.txt", mode='w', encoding='utf-8') as f:
+            with open("../../BoP2017_DBAQ_dev_train_data/AllenAI3ScoreResult.txt", mode='w',
+                      encoding='utf-8') as f:
                 # print(scores_lines)
                 f.writelines("\n".join(scores_lines))
-            # with open("../../BoP2017_DBAQ_dev_train_data/allenAIResult.txt", mode='w', encoding='utf-8') as f:
-            #     # print(detail_lines)
-            #     f.writelines(detail_lines)
+            with open("../../BoP2017_DBAQ_dev_train_data/AllenAI3Result.txt", mode='w', encoding='utf-8') as f:
+                # print(detail_lines)
+                f.writelines(detail_lines)
+        return ret
 
+    def evaluation2(self, max_iter=None, write_into_file=True):
+        def parse_line(line):
+            keys = line.split('\t')
+            try:
+                q = keys[0]
+            except:
+                q = keys[0][1]
+            return q, keys[1]
+
+        def cosine_similarity(vec1, vec2):
+            try:
+                return np.dot(vec1.T, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+            except:
+                ''' this except because the answer is only combine with signature so ignore it
+                    e.g 网舞四代的阪本奨悟身高多少？	）'''
+                return -1
+
+        def score_answer_vector(q_vec, a_vec_list):
+            sim_score = []
+            for a_v in a_vec_list:
+                sim_score.append(cosine_similarity(q_vec, a_v))
+            return sim_score
+
+        def compare_score_and_label(score_list):
+            rank_list = np.ones((len(score_list),), dtype=np.int32)
+            score_list = np.array(score_list)
+            sort_list = np.argsort(score_list)[::-1]
+            r = 1
+            for arg_index in sort_list:
+                rank_list[arg_index] = r
+                r += 1
+            return rank_list
+
+        cur_iter = 0
+        predict_sentence_buffer = []
+        qs = []
+        ans = []
+        scores = []
+        preds = []
+        last_q = None
+        with open("../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.finalData/BoP2017-DBQA.test.txt", mode='r', encoding='utf-8') as f:
+            line = f.readline()
+            while line != -1 and len(line) > 0:
+                q, a = parse_line(line)
+                qs.append(q)
+                ans.append(a)
+                if last_q is None:
+                    last_q = q
+                    predict_sentence_buffer.append(q)
+                elif last_q != q:
+                    last_q = q
+                    vec_list = self.predict(predict_sentence_buffer)
+                    pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
+                    for s in pred_score:
+                        scores.append(s)
+                    rank = compare_score_and_label(pred_score)
+                    for r in rank:
+                        preds.append(r)
+                    predict_sentence_buffer = []
+                    q_label_ls = []
+                    predict_sentence_buffer.append(q)
+                predict_sentence_buffer.append(a)
+                line = f.readline()
+                if max_iter is not None:
+                    cur_iter += 1
+                    if cur_iter > max_iter:
+                        break
+            # predict the last question
+            vec_list = self.predict(predict_sentence_buffer)
+            pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
+            for s in pred_score:
+                scores.append(s)
+            rank = compare_score_and_label(pred_score)
+            for r in rank:
+                preds.append(r)
+
+        if write_into_file:
+            print('writing to file')
+            detail_lines = []
+            scores_lines = []
+            for pred, q, a, score in zip(preds, qs, ans, scores):
+                line = "\t".join([str(pred), q, a])
+                detail_lines.append(line)
+                scores_lines.append(str(score))
+            with open("../../BoP2017_DBAQ_dev_train_data/AllenAI3testScore.txt", mode='w',
+                      encoding='utf-8') as f:
+                # print(scores_lines)
+                f.writelines("\n".join(scores_lines))
+            with open("../../BoP2017_DBAQ_dev_train_data/AllenAI3testDetail.txt", mode='w', encoding='utf-8') as f:
+                # print(detail_lines)
+                f.writelines(detail_lines)
 if __name__ == '__main__':
     m = AllenAIModel()
-    # m.load_model('AllenAI3_WebQA_epoch0')
-    # # m.compile_model()
-    # epochs = 10
+    # m.compile_model()
+    # epochs = 20
     # for epoch in range(epochs):
-    #     model_save_name = "AllenAI3_epoch" + str(epoch)
     #     # 224160
     #     m.fit(224160)
-    #     m.evaluation(2000, write_into_file=False)
+    #     score = m.evaluation(5000, write_into_file=False)
+    #     model_save_name = "AllenAI3_margin.1_cnn_size2_epoch" + str(epoch) + '_' + str(score)
     #     m.save_model(model_save_name)
-    #     print('AllenAI3 epoch', str(epoch), 'finished')
-    m.load_model("AllenAI3_epoch2")
-    # m.evaluation()
+    #     print('AllenAI3 margin.1 cnn_size2 epoch', str(epoch), 'finished')
+    m.load_model("AllenAI3_margin.1_cnn_size2_epoch16_0.686498564062")
+    m.evaluation()
 
 
 

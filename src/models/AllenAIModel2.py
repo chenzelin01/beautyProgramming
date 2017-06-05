@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from keras.layers import Input, LSTM, Dense, concatenate, crf, RepeatVector,\
-    TimeDistributed, Multiply, Embedding, Convolution1D, Bidirectional, MaxPooling1D, Flatten, Dropout
+    TimeDistributed, Multiply, Embedding, Convolution1D, Bidirectional, GlobalAveragePooling1D, Flatten, Dropout
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras import backend as K
@@ -59,8 +59,7 @@ class AllenAIModel:
                 filters=self.output_dim,
                 kernel_size=3, name='share_conv_layer',
                 activation='tanh')
-        q_pooling_layer = MaxPooling1D(
-            pool_size=self.sentence_len - 2,
+        q_pooling_layer = GlobalAveragePooling1D(
             name='question_pooling_layer')(Dropout(dropout_rate)(share_conv_layer(q_lstm)))
         q_output_layer = Lambda(lambda x: K.reshape(x, (-1, self.output_dim,)), name='q_output_layer')(q_pooling_layer)
 
@@ -69,17 +68,9 @@ class AllenAIModel:
         a_lstm = question_answer_shared_biLSTM(a_input)
 
         # concatenate the attention and the answer lstm output and connect to the answer_cnn_layer
-        a_conv_layer = Dropout(dropout_rate)(
-            Convolution1D(
-                filters=self.output_dim,
-                kernel_size=3, name='a_conv_layer',
-                activation='tanh')(a_lstm)
-        )
-        a_pooling_layer = MaxPooling1D(
-            pool_size=self.sentence_len - 2,
+        a_pooling_layer = GlobalAveragePooling1D(
             name='answer_pooling_layer'
-        # )(Dropout(dropout_rate)(share_conv_layer(a_lstm)))
-        )(a_conv_layer)
+        )(Dropout(dropout_rate)(share_conv_layer(a_lstm)))
         a_output_layer = Lambda(lambda x: K.reshape(x, (-1, self.output_dim,)), name='a_output_layer')(a_pooling_layer)
 
         cosine_layer = Lambda(function=cosine_similarity, name='cosine_layer')([q_output_layer, a_output_layer])
@@ -255,16 +246,16 @@ if __name__ == '__main__':
     #     m.evaluation(2000, write_into_file=False)
     #     m.save_model(model_save_name)
     #     print('AllenAI2 epoch', str(epoch), 'finished')
-
-    i = 1
-    m.load_model("AllenAI2_not_shared_cnn_epoch" + str(i))
-    print('-----the result of AllenAI2 not share_cnn_epoch', str(i), '------')
-    m.evaluation(None, write_into_file=False)
-
-    i = 5
-    m.load_model("AllenAI2_not_shared_cnn_epoch" + str(i))
-    print('-----the result of AllenAI2 not share_cnn_epoch', str(i), '------')
-    m.evaluation(None, write_into_file=False)
+    #
+    # i = 1
+    # m.load_model("AllenAI2_not_shared_cnn_epoch" + str(i))
+    # print('-----the result of AllenAI2 not share_cnn_epoch', str(i), '------')
+    # m.evaluation(None, write_into_file=False)
+    #
+    # i = 5
+    # m.load_model("AllenAI2_not_shared_cnn_epoch" + str(i))
+    # print('-----the result of AllenAI2 not share_cnn_epoch', str(i), '------')
+    # m.evaluation(None, write_into_file=False)
 
 
 

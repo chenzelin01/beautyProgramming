@@ -3,8 +3,8 @@
 ''' this module is an implementation of paper https://arxiv.org/pdf/1511.04108.pdf
     and website https://github.com/tambetm/allenAI'''
 from keras.layers import Input, LSTM, Dense, concatenate, crf, RepeatVector,\
-    TimeDistributed, Multiply, Embedding, Convolution1D, Bidirectional, MaxPooling1D, Flatten, Dropout
-from keras.layers.core import Lambda
+    TimeDistributed, Multiply, Embedding, Convolution1D, Bidirectional, GlobalMaxPooling1D, Flatten, Dropout
+from keras.layers.core import Lambda, Permute
 from keras.models import Model
 from keras import backend as K
 import numpy as np
@@ -15,7 +15,7 @@ from src.Sentence2Matrix import Sentence2Matrix
 import tensorflow as tf
 from keras.backend import tensorflow_backend
 config = tf.ConfigProto(
-    gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.8),
+    gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.3),
     device_count={'GPU': 1}
 )
 config.gpu_options.allow_growth = True
@@ -38,19 +38,11 @@ class AllenAIModel:
     def compile_model(self):
         dropout_rate = 0.05
         input_layer = Input(shape=(self.sentence_len, self.word_dim), name="input_layer")
-        LSTM_layer = LSTM(self.output_dim, dropout=dropout_rate, return_sequences=True)(input_layer)
-        LSTM_layer = LSTM(self.output_dim, dropout=dropout_rate, return_sequences=True, go_backwards=True)(LSTM_layer)
+        LSTM_layer = Bidirectional(LSTM(self.output_dim, dropout=dropout_rate, return_sequences=True))(input_layer)
 
-        # add softmax weight
-        # alpha_tanh = Dense(self.sentence_len, activation='tanh')(LSTM_layer)
-        # alpha = Dense(1, activation='softmax')(alpha_tanh)
-        # softmax_weight = Multiply()([LSTM_layer, alpha])
+        conv_layer = Convolution1D(filters=self.output_dim, kernel_size=3, name='conv_layer', activation='tanh')(LSTM_layer)
 
-        conv_layer = Dropout(dropout_rate)(
-            Convolution1D(filters=self.output_dim, kernel_size=3, name='conv_layer', activation='tanh')(LSTM_layer)
-        )
-        pooling_layer = MaxPooling1D(pool_size=self.sentence_len - 2)(conv_layer)
-        pooling_layer = Lambda(lambda x: K.reshape(x, (-1, self.output_dim,)))(pooling_layer)
+        pooling_layer = GlobalMaxPooling1D()(conv_layer)
         # hidden_layer = Dropout(dropout_rate)(Dense(128, activation='tanh')(pooling_layer))
         # out_layer = Dropout(dropout_rate)(Dense(128, activation='tanh')(hidden_layer))
         self.model = Model(inputs=[input_layer], outputs=[pooling_layer])
@@ -146,21 +138,22 @@ class AllenAIModel:
             return sim_score
 
         def compare_score_and_label(score_list, label_list):
-            rank_list = np.ones((len(score_list),), dtype=np.int32)
+            rank_list = np.ones((len(score_list),), dtype=np.float32)
             label_list = np.array(label_list)
             score_list = np.array(score_list)
-            correct_margin = 1
-            max_rank = np.sum(label_list) + correct_margin
             sort_list = np.argsort(score_list)[::-1]
             r = 1
             for arg_index in sort_list:
                 rank_list[arg_index] = r
                 r += 1
             rank_list_cp = np.array(rank_list)
-            rank_list_cp[label_list == 0] = max_rank + 1
-
-            correct_num = np.sum(rank_list_cp <= max_rank)
-            return correct_num, rank_list
+            rank_list_cp[label_list == 0] = 0
+            s = np.sum(rank_list_cp)
+            if s == 0:
+                score = 0
+            else:
+                score = 1 / s
+            return score, rank_list
 
         cur_iter = 0
         predict_sentence_buffer = []
@@ -171,7 +164,8 @@ class AllenAIModel:
         preds = []
         scores = []
         last_q = None
-        correct = 0
+        q_num = 0
+        total_scores = 0
         with open("../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt", mode='r', encoding='utf-8') as f:
             line = f.readline()
             while line != -1 and len(line) > 0:
@@ -181,15 +175,17 @@ class AllenAIModel:
                 ans.append(a)
                 if last_q is None:
                     last_q = q
+                    q_num += 1
                     predict_sentence_buffer.append(q)
                 elif last_q != q:
                     last_q = q
+                    q_num += 1
                     vec_list = self.predict(predict_sentence_buffer)
                     pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
                     for s in pred_score:
                         scores.append(s)
-                    q_correct, rank = compare_score_and_label(pred_score, q_label_ls)
-                    correct += q_correct
+                    score, rank = compare_score_and_label(pred_score, q_label_ls)
+                    total_scores += score
                     for r in rank:
                         preds.append(r)
                     predict_sentence_buffer = []
@@ -207,13 +203,13 @@ class AllenAIModel:
             pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
             for s in pred_score:
                 scores.append(s)
-            q_correct, rank = compare_score_and_label(pred_score, q_label_ls)
-            correct += q_correct
+            score, rank = compare_score_and_label(pred_score, q_label_ls)
+            total_scores += score
             for r in rank:
                 preds.append(r)
 
-        total_1s = np.sum(ls)
-        print(correct / total_1s)
+        ret = total_scores / q_num
+        print(ret)
         if write_into_file:
             print('writing to file')
             detail_lines = []
@@ -222,86 +218,28 @@ class AllenAIModel:
                 line = "\t".join([str(pred), str(l), q, a])
                 detail_lines.append(line)
                 scores_lines.append(str(score))
-            with open("../../BoP2017_DBAQ_dev_train_data/allenAIScoreResult_model4.txt", mode='w', encoding='utf-8') as f:
+            with open("../../BoP2017_DBAQ_dev_train_data/AllenAIScoreResult.txt", mode='w',
+                      encoding='utf-8') as f:
                 # print(scores_lines)
                 f.writelines("\n".join(scores_lines))
-            # with open("../../BoP2017_DBAQ_dev_train_data/allenAIResult.txt", mode='w', encoding='utf-8') as f:
-            #     # print(detail_lines)
-            #     f.writelines(detail_lines)
-
-    def evaluation2(self, max_iter=None, write_into_file=True):
-        def parse_line(line):
-            keys = line.split('\t')
-            try:
-                label = int(keys[0])
-            except:
-                label = int(keys[0][1])
-            return keys[1], keys[2], label
-
-        def cosine_similarity(vec1, vec2):
-            try:
-                return np.dot(vec1.T, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-            except:
-                ''' this except because the answer is only combine with signature so ignore it
-                    e.g qa= 网舞四代的阪本奨悟身高多少？	a = ）'''
-                return -1
-
-        def score_answer_vector(q_vec, a_vec_list):
-            sim_score = []
-            for a_v in a_vec_list:
-                sim_score.append(cosine_similarity(q_vec, a_v))
-            return sim_score
-
-        cur_iter = 0
-        predict_sentence_buffer = []
-        ls = []
-        qs = []
-        ans = []
-        scores = []
-        last_q = None
-        with open("../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt", mode='r', encoding='utf-8') as f:
-            line = f.readline()
-            while line != -1 and len(line) > 0:
-                q, a, l = parse_line(line)
-                ls.append(l)
-                qs.append(q)
-                ans.append(a)
-                if last_q is None:
-                    last_q = q
-                    predict_sentence_buffer.append(q)
-                elif last_q != q:
-                    last_q = q
-                    vec_list = self.predict(predict_sentence_buffer)
-                    pred_score = score_answer_vector(vec_list[0], vec_list[1:len(vec_list)])
-                    for s in pred_score:
-                        scores.append(s)
-                    predict_sentence_buffer.append(q)
-                predict_sentence_buffer.append(a)
-                line = f.readline()
-                if max_iter is not None:
-                    cur_iter += 1
-                    if cur_iter > max_iter:
-                        break
-        print('ready to writing the result')
-        if write_into_file:
-            with open("../../BoP2017_DBAQ_dev_train_data/allenAIScoreResult.txt", mode='w', encoding='utf-8') as f:
-                for score in scores:
-                    f.writelines(str(score))
+            with open("../../BoP2017_DBAQ_dev_train_data/AllenAIResult.txt", mode='w', encoding='utf-8') as f:
+                # print(detail_lines)
+                f.writelines(detail_lines)
+        return ret
 
 if __name__ == '__main__':
     m = AllenAIModel()
-    # m.load_model("AllenAI_epoch7")
-    # # m.compile_model()
-    # epochs = 10
-    # for epoch in range(epochs):
-    #     model_save_name = "AllenAI_WebQA_epoch" + str(epoch)
-    #     # 224160
-    #     m.fit(1162000)
-    #     m.evaluation(2000, write_into_file=False)
-    #     m.save_model(model_save_name)
-    #     print('AllenAI epoch', str(epoch), 'finished')
-    m.load_model("AllenAI_epoch4")
-    m.evaluation()
+    m.compile_model()
+    epochs = 20
+    for epoch in range(epochs):
+        # 224160
+        m.fit(224160)
+        score = m.evaluation(5000, write_into_file=False)
+        model_save_name = "AllenAI_WebQA_epoch" + str(epoch) + '_' + str(score)
+        m.save_model(model_save_name)
+        print('AllenAI epoch', str(epoch), 'finished')
+    # m.load_model("AllenAI_epoch4")
+    # m.evaluation()
 
 
 

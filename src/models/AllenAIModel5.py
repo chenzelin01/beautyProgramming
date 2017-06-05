@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from keras.layers import Input, LSTM, Dense, concatenate, crf, RepeatVector,\
-    TimeDistributed, Multiply, Embedding, Convolution1D, Bidirectional, MaxPooling1D, Flatten, Dropout
+    TimeDistributed, Multiply, Embedding, Convolution1D, Bidirectional, GlobalAveragePooling1D, Flatten, Dropout
 from keras.layers.core import Lambda
 from keras.models import Model
 from keras import backend as K
@@ -29,7 +29,7 @@ class AllenAIModel:
         self.model = None
         self.margin = 0.2
         self.db_file = "../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.pre_train.txt"
-        self.batch_m = 60
+        self.batch_m = 120
         self.output_dim = 128
 
     def compile_model(self):
@@ -59,8 +59,7 @@ class AllenAIModel:
                 filters=self.output_dim,
                 kernel_size=3, name='share_conv_layer',
                 activation='tanh')
-        q_pooling_layer = MaxPooling1D(
-            pool_size=self.sentence_len - 2,
+        q_pooling_layer = GlobalAveragePooling1D(
             name='question_pooling_layer')(Dropout(dropout_rate)(share_conv_layer(q_lstm)))
         q_output_layer = Lambda(lambda x: K.reshape(x, (-1, self.output_dim,)), name='q_output_layer')(q_pooling_layer)
 
@@ -75,15 +74,7 @@ class AllenAIModel:
         softmax_weight = Multiply()([a_lstm, alpha])
 
 
-        # concatenate the attention and the answer lstm output and connect to the answer_cnn_layer
-        # a_conv_layer = Dropout(dropout_rate)(
-        #     Convolution1D(
-        #         filters=self.output_dim,
-        #         kernel_size=3, name='a_conv_layer',
-        #         activation='tanh')(softmax_weight)
-        # )
-        a_pooling_layer = MaxPooling1D(
-            pool_size=self.sentence_len - 2,
+        a_pooling_layer = GlobalAveragePooling1D(
             name='answer_pooling_layer'
         )(Dropout(dropout_rate)(share_conv_layer(softmax_weight)))
         # )(a_conv_layer)
@@ -168,18 +159,19 @@ class AllenAIModel:
             rank_list = np.ones((len(score_list),), dtype=np.int32)
             label_list = np.array(label_list)
             score_list = np.array(score_list)
-            correct_margin = 1
-            max_rank = np.sum(label_list) + correct_margin
             sort_list = np.argsort(score_list)[::-1]
             r = 1
             for arg_index in sort_list:
                 rank_list[arg_index] = r
                 r += 1
             rank_list_cp = np.array(rank_list)
-            rank_list_cp[label_list == 0] = max_rank + 1
-
-            correct_num = np.sum(rank_list_cp <= max_rank)
-            return correct_num, rank_list
+            rank_list_cp[label_list == 0] = 0
+            s = np.sum(rank_list_cp)
+            if s == 0:
+                score = 0
+            else:
+                score = 1 / s
+            return score, rank_list
 
         cur_iter = 0
         q_buffer = []
@@ -191,7 +183,8 @@ class AllenAIModel:
         preds = []
         scores = []
         last_q = None
-        correct = 0
+        total_scores = 0
+        q_num = 0
         with open("../../BoP2017_DBAQ_dev_train_data/BoP2017-DBQA.dev.txt", mode='r', encoding='utf-8') as f:
             line = f.readline()
             while line != -1 and len(line) > 0:
@@ -202,14 +195,16 @@ class AllenAIModel:
                 # predict once when question is changed
                 if last_q is None:
                     last_q = q
+                    q_num += 1
                 elif last_q != q:
                     last_q = q
+                    q_num += 1
                     score_list = self.predict(q_buffer, a_buffer)
                     score_list = [s[0] for s in score_list]
                     for s in score_list:
                         scores.append(s)
-                    q_correct, rank = compare_score_and_label(score_list, q_label_ls)
-                    correct += q_correct
+                    score, rank = compare_score_and_label(score_list, q_label_ls)
+                    total_scores += score
                     for r in rank:
                         preds.append(r)
                     q_buffer = []
@@ -231,12 +226,12 @@ class AllenAIModel:
             for s in score_list:
                 scores.append(s)
             q_correct, rank = compare_score_and_label(score_list, q_label_ls)
-            correct += q_correct
+            total_scores += score
             for r in rank:
                 preds.append(r)
 
-        total_1s = np.sum(ls)
-        print(correct / total_1s)
+        ret = total_scores / q_num
+        print(ret)
         if write_into_file:
             print('writing to file')
             detail_lines = []
@@ -251,30 +246,20 @@ class AllenAIModel:
             with open("../../BoP2017_DBAQ_dev_train_data/allenAI5Result.txt", mode='w', encoding='utf-8') as f:
                 # print(detail_lines)
                 f.writelines(detail_lines)
+        return ret
 
 
 if __name__ == '__main__':
     m = AllenAIModel()
-    # m.compile_model()
-    # epochs = 16
-    # for epoch in range(epochs):
-    #     model_save_name = "AllenAI5_share_cnn_epoch" + str(epoch)
-    #     # 224160
-    #     m.fit(224160)
-    #     m.evaluation(2000, write_into_file=False)
-    #     m.save_model(model_save_name)
-    #     print('AllenAI5 epoch', str(epoch), 'finished')
-
-    # epochs = 16
-    # for i in range(epochs):
-    # i = 8
-    # m.load_model("AllenAI5_share_cnn_epoch" + str(i))
-    # print('-----the result of AllenAI5 share_cnn_epoch', str(i), '------')
-    # m.evaluation(None, write_into_file=False)
-    i = 11
-    m.load_model("AllenAI5_share_cnn_epoch" + str(i))
-    print('-----the result of AllenAI5 share_cnn_epoch', str(i), '------')
-    m.evaluation(None, write_into_file=True)
+    m.compile_model()
+    epochs = 20
+    for epoch in range(epochs):
+        # 224160
+        m.fit(224160)
+        score = m.evaluation(5000, write_into_file=False)
+        model_save_name = "AllenAI5_aver_attention_epoch" + str(epoch) + '_' + str(score)
+        m.save_model(model_save_name)
+        print('AllenAI5 aver_attention epoch', str(epoch), 'finished')
 
 
 

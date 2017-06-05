@@ -7,10 +7,10 @@ import re
 '''the class is a helper to transfer sentences into vector and erase the signature in
 the sentences'''
 class Sentence2Matrix:
-    def __init__(self, word2vec_file):
+    def __init__(self, word2vec_file, sentence_len=64):
         self.wordModel = Word2Vec.load(word2vec_file)
         self.word_dim = 100
-        self.sentence_len = 64
+        self.sentence_len = sentence_len
         self.model = None
         self.signature_re = re.compile("[\s+\.\!\/_,$%^*(+\"\';:]+|[+——！，。？、~@#￥%……&*（）；：》《｛｝【】]+")
 
